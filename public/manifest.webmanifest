@@ -1,0 +1,25 @@
+{
+  "name": "VKU Campus Inspection",
+  "short_name": "VKU Inspection",
+  "description": "Ứng dụng khảo sát và kiểm tra cơ sở vật chất VKU",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0284c7",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
