@@ -1,5 +1,239 @@
 import './style.css'
 
+import { Capacitor } from '@capacitor/core'
+import {
+  Camera,
+  CameraResultType,
+  CameraSource
+} from '@capacitor/camera'
+
+import { Geolocation } from '@capacitor/geolocation'
+import { Network } from '@capacitor/network'
+import { LocalNotifications } from '@capacitor/local-notifications'
+
+import {
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut
+} from 'firebase/auth'
+
+import { auth } from './firebase.js'
+
+
+// ==========================================
+// FIREBASE GOOGLE LOGIN
+// ==========================================
+
+const googleProvider =
+  new GoogleAuthProvider()
+
+let currentUser = null
+
+
+function renderLogin() {
+
+  app.innerHTML = `
+
+    <div
+      style="
+        min-height:100vh;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:24px;
+        background:#f1f5f9;
+        box-sizing:border-box;
+      "
+    >
+
+      <div
+        style="
+          width:min(420px,100%);
+          background:white;
+          border-radius:20px;
+          padding:32px;
+          box-shadow:0 12px 35px rgba(15,23,42,.12);
+          text-align:center;
+        "
+      >
+
+        <div style="font-size:48px;">
+          🎓
+        </div>
+
+        <h1>
+          VKU Interview Survey
+        </h1>
+
+        <p
+          style="
+            color:#64748b;
+            line-height:1.6;
+          "
+        >
+          Đăng nhập bằng Google để thực hiện khảo sát.
+        </p>
+
+      <button
+        id="googleLoginBtn"
+        class="primary-btn google-login-btn"
+        style="
+          width:100%;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap:12px;
+        "
+      >
+        <img
+          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+          alt="Google"
+          style="
+            width:20px;
+            height:20px;
+          "
+        />
+
+        <span>
+          Đăng nhập bằng Google
+        </span>
+      </button>
+
+      </div>
+
+    </div>
+
+  `
+
+  document
+    .querySelector('#googleLoginBtn')
+    .addEventListener(
+      'click',
+      loginWithGoogle
+    )
+}
+
+
+async function loginWithGoogle() {
+
+  const button =
+    document.querySelector(
+      '#googleLoginBtn'
+    )
+
+  try {
+
+    button.disabled = true
+
+    button.textContent =
+      '⏳ Đang đăng nhập...'
+
+    await signInWithPopup(
+      auth,
+      googleProvider
+    )
+
+  } catch (error) {
+
+    console.error(
+      'Google Login Error:',
+      error
+    )
+
+    alert(
+      'Đăng nhập Google thất bại. Hãy kiểm tra cấu hình Firebase.'
+    )
+
+    if (button) {
+
+      button.disabled = false
+
+      button.textContent =
+        '🔐 Đăng nhập bằng Google'
+    }
+  }
+}
+
+
+async function logout() {
+
+  try {
+
+    await signOut(auth)
+
+  } catch (error) {
+
+    console.error(
+      'Logout Error:',
+      error
+    )
+
+    alert(
+      'Không thể đăng xuất.'
+    )
+  }
+}
+
+
+function getUserHTML() {
+
+  if (!currentUser) {
+    return ''
+  }
+
+  const photo =
+    currentUser.photoURL
+      ? `
+        <img
+          src="${currentUser.photoURL}"
+          alt="Avatar"
+          style="
+            width:36px;
+            height:36px;
+            border-radius:50%;
+            object-fit:cover;
+          "
+        >
+      `
+      : '👤'
+
+  return `
+
+    <div
+      style="
+        display:flex;
+        align-items:center;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-top:10px;
+      "
+    >
+
+      ${photo}
+
+      <span style="font-size:14px;">
+        ${
+          currentUser.displayName ||
+          currentUser.email ||
+          'Người dùng'
+        }
+      </span>
+
+      <button
+        id="logoutBtn"
+        type="button"
+        class="secondary-btn"
+      >
+        Đăng xuất
+      </button>
+
+    </div>
+
+  `
+}
+
+
 // ==========================================
 // GOOGLE APPS SCRIPT API
 // ==========================================
@@ -12,52 +246,152 @@ const API_URL =
 // INDEXEDDB
 // ==========================================
 
-const DB_NAME = 'vkuInterviewDB'
+const DB_NAME =
+  'vkuInterviewDB'
 
-const STORE_NAME = 'surveys'
+const STORE_NAME =
+  'surveys'
 
-const DB_VERSION = 2
+const DB_VERSION =
+  2
 
 
-const app = document.querySelector('#app')
+const app =
+  document.querySelector(
+    '#app'
+  )
 
 
 // Dữ liệu tạm của form
 let surveyData = {}
 
-async function getStatistics() {
-  try {
-    const response = await fetch(API_URL)
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
+// ==========================================
+// FIREBASE AUTH STATE
+// ==========================================
+
+onAuthStateChanged(
+  auth,
+  (user) => {
+
+    currentUser = user
+
+    if (!user) {
+
+      renderLogin()
+
+      return
     }
 
-    const result = await response.json()
+    renderHome()
 
-    if (!result.success) {
+    syncPendingSurveys()
+      .catch(
+        (error) => {
+
+          console.error(
+            'Lỗi đồng bộ khi khởi động:',
+            error
+          )
+        }
+      )
+  }
+)
+
+
+// ==========================================
+// LẤY THỐNG KÊ
+// ==========================================
+
+async function getStatistics() {
+
+  try {
+
+    const response =
+      await fetch(API_URL, {
+        method: 'GET',
+        cache: 'no-store'
+      })
+
+
+    if (!response.ok) {
+
       throw new Error(
-        result.message || 'Không thể lấy thống kê'
+        `HTTP ${response.status}`
       )
     }
 
-    return result.statistics
+
+    const result =
+      await response.json()
+
+
+    console.log(
+      '📊 Statistics API:',
+      result
+    )
+
+
+    if (!result.success) {
+
+      throw new Error(
+        result.message ||
+        'Không thể lấy thống kê'
+      )
+    }
+
+
+    if (!result.statistics) {
+
+      throw new Error(
+        'API không trả về statistics'
+      )
+    }
+
+
+    return {
+
+      total:
+        Number(
+          result.statistics.total
+        ) || 0,
+
+      interviewed:
+        Number(
+          result.statistics.interviewed
+        ) || 0,
+
+      notInterviewed:
+        Number(
+          result.statistics.notInterviewed
+        ) || 0,
+
+      lookingForJob:
+        Number(
+          result.statistics.lookingForJob
+        ) || 0
+
+    }
+
 
   } catch (error) {
+
     console.error(
-      'Lỗi lấy thống kê:',
+      '❌ Lỗi lấy thống kê:',
       error
     )
 
+
+    // Không giả vờ rằng dữ liệu bị mất.
+    // Giữ trạng thái lỗi để kiểm tra API.
     return {
-      total: 0,
-      interviewed: 0,
-      notInterviewed: 0,
-      lookingForJob: 0
+      total: '--',
+      interviewed: '--',
+      notInterviewed: '--',
+      lookingForJob: '--'
     }
   }
 }
-
 
 // ==========================================
 // MỞ DATABASE
@@ -65,53 +399,52 @@ async function getStatistics() {
 
 function openDatabase() {
 
-  return new Promise((resolve, reject) => {
+  return new Promise(
+    (resolve, reject) => {
 
-    const request =
-      indexedDB.open(
-        DB_NAME,
-        DB_VERSION
-      )
-
-
-    request.onupgradeneeded = () => {
-
-      const db = request.result
-
-
-      // Database cũ có thể đã có store "sessions"
-
-      if (
-        !db.objectStoreNames.contains(
-          STORE_NAME
+      const request =
+        indexedDB.open(
+          DB_NAME,
+          DB_VERSION
         )
-      ) {
 
-        db.createObjectStore(
-          STORE_NAME,
-          {
-            keyPath: 'id'
+      request.onupgradeneeded =
+        () => {
+
+          const db =
+            request.result
+
+          if (
+            !db.objectStoreNames
+              .contains(STORE_NAME)
+          ) {
+
+            db.createObjectStore(
+              STORE_NAME,
+              {
+                keyPath: 'id'
+              }
+            )
           }
-        )
-      }
+        }
+
+      request.onsuccess =
+        () => {
+
+          resolve(
+            request.result
+          )
+        }
+
+      request.onerror =
+        () => {
+
+          reject(
+            request.error
+          )
+        }
     }
-
-
-    request.onsuccess = () => {
-
-      resolve(
-        request.result
-      )
-    }
-
-
-    request.onerror = () => {
-
-      reject(
-        request.error
-      )
-    }
-  })
+  )
 }
 
 
@@ -124,7 +457,6 @@ async function saveSurvey(data) {
   const db =
     await openDatabase()
 
-
   return new Promise(
     (resolve, reject) => {
 
@@ -134,29 +466,27 @@ async function saveSurvey(data) {
           'readwrite'
         )
 
-
       const store =
         transaction.objectStore(
           STORE_NAME
         )
 
-
       const request =
         store.put(data)
 
+      request.onsuccess =
+        () => {
 
-      request.onsuccess = () => {
+          resolve()
+        }
 
-        resolve()
-      }
+      request.onerror =
+        () => {
 
-
-      request.onerror = () => {
-
-        reject(
-          request.error
-        )
-      }
+          reject(
+            request.error
+          )
+        }
     }
   )
 }
@@ -171,7 +501,6 @@ async function getAllSurveys() {
   const db =
     await openDatabase()
 
-
   return new Promise(
     (resolve, reject) => {
 
@@ -181,31 +510,29 @@ async function getAllSurveys() {
           'readonly'
         )
 
-
       const store =
         transaction.objectStore(
           STORE_NAME
         )
 
-
       const request =
         store.getAll()
 
+      request.onsuccess =
+        () => {
 
-      request.onsuccess = () => {
+          resolve(
+            request.result || []
+          )
+        }
 
-        resolve(
-          request.result || []
-        )
-      }
+      request.onerror =
+        () => {
 
-
-      request.onerror = () => {
-
-        reject(
-          request.error
-        )
-      }
+          reject(
+            request.error
+          )
+        }
     }
   )
 }
@@ -220,30 +547,44 @@ function getNetworkStatusHTML() {
   if (navigator.onLine) {
 
     return `
+
       <span class="network-status online">
         ● Online
       </span>
+
     `
   }
 
-
   return `
+
     <span class="network-status offline">
       ● Offline
     </span>
+
   `
 }
 
+
+// ==========================================
+// HOME
+// ==========================================
+
 async function renderHome() {
+
   const statistics =
     await getStatistics()
 
   app.innerHTML = `
+
     <div class="home-container">
 
       <header class="home-header">
+
         <div class="home-header-content">
-          <h1>VKU Interview Survey</h1>
+
+          <h1>
+            VKU Interview Survey
+          </h1>
 
           <p>
             Khảo sát tình trạng phỏng vấn
@@ -251,27 +592,42 @@ async function renderHome() {
           </p>
 
           ${getNetworkStatusHTML()}
+
+          ${getUserHTML()}
+
         </div>
+
       </header>
+
 
       <main class="home-content">
 
         <section class="welcome-section">
-          <h2>Khảo sát việc làm sinh viên</h2>
+
+          <h2>
+            Khảo sát việc làm sinh viên
+          </h2>
 
           <p>
             Hãy chia sẻ thông tin về quá trình
             phỏng vấn và nhu cầu việc làm của bạn.
           </p>
+
         </section>
+
 
         <section class="statistics-section">
 
-          <h2>📊 Thống kê khảo sát</h2>
+          <h2>
+            📊 Thống kê khảo sát
+          </h2>
+
 
           <div class="statistics-grid">
 
+
             <div class="stat-card">
+
               <div class="stat-number">
                 ${statistics.total}
               </div>
@@ -279,9 +635,12 @@ async function renderHome() {
               <div class="stat-label">
                 Sinh viên đã khảo sát
               </div>
+
             </div>
 
+
             <div class="stat-card">
+
               <div class="stat-number">
                 ${statistics.interviewed}
               </div>
@@ -289,9 +648,12 @@ async function renderHome() {
               <div class="stat-label">
                 Đã từng phỏng vấn
               </div>
+
             </div>
 
+
             <div class="stat-card">
+
               <div class="stat-number">
                 ${statistics.notInterviewed}
               </div>
@@ -299,9 +661,12 @@ async function renderHome() {
               <div class="stat-label">
                 Chưa từng phỏng vấn
               </div>
+
             </div>
 
+
             <div class="stat-card">
+
               <div class="stat-number">
                 ${statistics.lookingForJob}
               </div>
@@ -309,11 +674,14 @@ async function renderHome() {
               <div class="stat-label">
                 Đang tìm việc
               </div>
+
             </div>
+
 
           </div>
 
         </section>
+
 
         <section class="home-action">
 
@@ -326,17 +694,40 @@ async function renderHome() {
 
         </section>
 
+
       </main>
 
     </div>
+
   `
 
-  document
-    .querySelector('#startSurveyBtn')
-    .addEventListener(
+
+  const startButton =
+    document.querySelector(
+      '#startSurveyBtn'
+    )
+
+  if (startButton) {
+
+    startButton.addEventListener(
       'click',
       renderSurvey
     )
+  }
+
+
+  const logoutBtn =
+    document.querySelector(
+      '#logoutBtn'
+    )
+
+  if (logoutBtn) {
+
+    logoutBtn.addEventListener(
+      'click',
+      logout
+    )
+  }
 }
 
 
@@ -350,7 +741,6 @@ function renderSurvey() {
 
     <div class="app-container">
 
-      <!-- HEADER -->
 
       <header class="app-header">
 
@@ -361,7 +751,8 @@ function renderSurvey() {
           </h1>
 
           <p>
-            Khảo sát tình trạng phỏng vấn và nhu cầu việc làm
+            Khảo sát tình trạng phỏng vấn
+            và nhu cầu việc làm
           </p>
 
         </div>
@@ -371,16 +762,14 @@ function renderSurvey() {
       </header>
 
 
-      <!-- CONTENT -->
-
       <main class="content">
 
         <form id="surveyForm">
 
 
-          <!-- ==================================
+          <!-- ================================
                1. THÔNG TIN SINH VIÊN
-          =================================== -->
+          ================================= -->
 
           <section class="form-card">
 
@@ -400,8 +789,13 @@ function renderSurvey() {
             <div class="form-group">
 
               <label for="fullName">
+
                 Họ và tên
-                <span class="required">*</span>
+
+                <span class="required">
+                  *
+                </span>
+
               </label>
 
               <input
@@ -417,8 +811,13 @@ function renderSurvey() {
             <div class="form-group">
 
               <label for="studentId">
+
                 MSSV
-                <span class="required">*</span>
+
+                <span class="required">
+                  *
+                </span>
+
               </label>
 
               <input
@@ -434,8 +833,13 @@ function renderSurvey() {
             <div class="form-group">
 
               <label for="major">
+
                 Ngành
-                <span class="required">*</span>
+
+                <span class="required">
+                  *
+                </span>
+
               </label>
 
               <select
@@ -479,8 +883,13 @@ function renderSurvey() {
             <div class="form-group">
 
               <label for="year">
+
                 Khóa
-                <span class="required">*</span>
+
+                <span class="required">
+                  *
+                </span>
+
               </label>
 
               <select
@@ -526,30 +935,41 @@ function renderSurvey() {
               <div class="radio-group">
 
                 <label>
+
                   <input
                     type="radio"
                     name="gender"
                     value="Nam"
                   />
+
                   Nam
+
                 </label>
 
+
                 <label>
+
                   <input
                     type="radio"
                     name="gender"
                     value="Nữ"
                   />
+
                   Nữ
+
                 </label>
 
+
                 <label>
+
                   <input
                     type="radio"
                     name="gender"
                     value="Khác"
                   />
+
                   Khác
+
                 </label>
 
               </div>
@@ -559,9 +979,9 @@ function renderSurvey() {
           </section>
 
 
-          <!-- ==================================
+          <!-- ================================
                2. TÌNH TRẠNG PHỎNG VẤN
-          =================================== -->
+          ================================= -->
 
           <section class="form-card">
 
@@ -585,7 +1005,9 @@ function renderSurvey() {
                 Bạn đã từng tham gia
                 phỏng vấn xin việc chưa?
 
-                <span class="required">*</span>
+                <span class="required">
+                  *
+                </span>
 
               </label>
 
@@ -625,14 +1047,14 @@ function renderSurvey() {
           </section>
 
 
-          <!-- ==================================
+          <!-- ================================
                3. ĐÃ PHỎNG VẤN
-          =================================== -->
+          ================================= -->
 
           <section
             class="form-card"
             id="interviewSection"
-            style="display: none;"
+            style="display:none;"
           >
 
             <div class="form-title">
@@ -782,14 +1204,14 @@ function renderSurvey() {
           </section>
 
 
-          <!-- ==================================
+          <!-- ================================
                3. CHƯA PHỎNG VẤN
-          =================================== -->
+          ================================= -->
 
           <section
             class="form-card"
             id="notInterviewSection"
-            style="display: none;"
+            style="display:none;"
           >
 
             <div class="form-title">
@@ -860,9 +1282,9 @@ function renderSurvey() {
           </section>
 
 
-          <!-- ==================================
+          <!-- ================================
                4. MONG MUỐN VIỆC LÀM
-          =================================== -->
+          ================================= -->
 
           <section class="form-card">
 
@@ -882,7 +1304,9 @@ function renderSurvey() {
             <div class="form-group">
 
               <label for="jobWish">
+
                 Bạn mong muốn công việc như thế nào?
+
               </label>
 
               <textarea
@@ -896,9 +1320,9 @@ function renderSurvey() {
           </section>
 
 
-          <!-- ==================================
+          <!-- ================================
                5. LOCATION
-          =================================== -->
+          ================================= -->
 
           <section class="form-card">
 
@@ -922,16 +1346,12 @@ function renderSurvey() {
                 id="locationBtn"
                 class="secondary-btn"
               >
-
                 📍 Lấy location
-
               </button>
 
 
               <span id="locationStatus">
-
                 Chưa lấy vị trí
-
               </span>
 
             </div>
@@ -939,9 +1359,9 @@ function renderSurvey() {
           </section>
 
 
-          <!-- ==================================
+          <!-- ================================
                6. ẢNH
-          =================================== -->
+          ================================= -->
 
           <section class="form-card">
 
@@ -960,11 +1380,21 @@ function renderSurvey() {
 
             <div class="form-group">
 
+              <button
+                type="button"
+                id="cameraBtn"
+                class="secondary-btn"
+              >
+                📷 Chụp ảnh
+              </button>
+
+
               <input
                 id="image"
                 type="file"
                 accept="image/*"
                 capture="environment"
+                style="margin-top:10px;"
               />
 
 
@@ -983,9 +1413,9 @@ function renderSurvey() {
           </section>
 
 
-          <!-- ==================================
+          <!-- ================================
                SUBMIT
-          =================================== -->
+          ================================= -->
 
           <div class="form-actions">
 
@@ -1006,6 +1436,7 @@ function renderSurvey() {
       </main>
 
     </div>
+
   `
 
 
@@ -1020,27 +1451,21 @@ function renderSurvey() {
 function setupSurveyEvents() {
 
 
-  // ----------------------------------------
-  // Đã phỏng vấn / Chưa
-  // ----------------------------------------
-
   document
     .querySelectorAll(
       'input[name="interviewed"]'
     )
-    .forEach((radio) => {
+    .forEach(
+      (radio) => {
 
-      radio.addEventListener(
-        'change',
-        updateInterviewSection
-      )
+        radio.addEventListener(
+          'change',
+          updateInterviewSection
+        )
 
-    })
+      }
+    )
 
-
-  // ----------------------------------------
-  // GPS
-  // ----------------------------------------
 
   document
     .querySelector('#locationBtn')
@@ -1050,9 +1475,13 @@ function setupSurveyEvents() {
     )
 
 
-  // ----------------------------------------
-  // Ảnh
-  // ----------------------------------------
+  document
+    .querySelector('#cameraBtn')
+    .addEventListener(
+      'click',
+      takePhoto
+    )
+
 
   document
     .querySelector('#image')
@@ -1061,10 +1490,6 @@ function setupSurveyEvents() {
       handleImage
     )
 
-
-  // ----------------------------------------
-  // Submit
-  // ----------------------------------------
 
   document
     .querySelector('#surveyForm')
@@ -1104,7 +1529,9 @@ function updateInterviewSection() {
     )
 
 
-  if (selected.value === 'Có') {
+  if (
+    selected.value === 'Có'
+  ) {
 
     interviewSection.style.display =
       'block'
@@ -1124,31 +1551,20 @@ function updateInterviewSection() {
 
 
 // ==========================================
-// GPS
+// GPS - CAPACITOR / WEB
 // ==========================================
 
-function getLocation() {
+async function getLocation() {
 
   const button =
     document.querySelector(
       '#locationBtn'
     )
 
-
   const status =
     document.querySelector(
       '#locationStatus'
     )
-
-
-  if (!navigator.geolocation) {
-
-    alert(
-      'Thiết bị không hỗ trợ GPS.'
-    )
-
-    return
-  }
 
 
   button.disabled = true
@@ -1157,75 +1573,202 @@ function getLocation() {
     '📍 Đang lấy vị trí...'
 
 
-  navigator.geolocation.getCurrentPosition(
+  try {
 
-    (position) => {
+    let position
 
-      surveyData.location = {
 
-        latitude:
-          position.coords.latitude,
+    // Android / Capacitor
+    if (
+      Capacitor.isNativePlatform()
+    ) {
 
-        longitude:
-          position.coords.longitude
+      await Geolocation.requestPermissions()
 
+      position =
+        await Geolocation.getCurrentPosition(
+          {
+            enableHighAccuracy: true,
+            timeout: 10000
+          }
+        )
+
+    }
+
+    // Web / PWA
+    else {
+
+      if (!navigator.geolocation) {
+
+        throw new Error(
+          'Thiết bị không hỗ trợ GPS.'
+        )
       }
 
 
-      status.textContent =
-        `Đã lấy: ${
-          position.coords.latitude.toFixed(6)
-        }, ${
-          position.coords.longitude.toFixed(6)
-        }`
+      position =
+        await new Promise(
+          (resolve, reject) => {
 
+            navigator.geolocation
+              .getCurrentPosition(
+                resolve,
+                reject,
+                {
+                  enableHighAccuracy: true,
+                  timeout: 10000,
+                  maximumAge: 0
+                }
+              )
 
-      button.disabled = false
-
-      button.textContent =
-        '📍 Lấy lại location'
-
-    },
-
-
-    (error) => {
-
-      console.error(
-        'GPS error:',
-        error
-      )
-
-
-      alert(
-        'Không thể lấy vị trí. Hãy kiểm tra quyền truy cập vị trí.'
-      )
-
-
-      button.disabled = false
-
-      button.textContent =
-        '📍 Lấy location'
-    },
-
-    {
-      enableHighAccuracy: true,
-
-      timeout: 10000,
-
-      maximumAge: 0
+          }
+        )
     }
-  )
+
+
+    surveyData.location = {
+
+      latitude:
+        position.coords.latitude,
+
+      longitude:
+        position.coords.longitude
+
+    }
+
+
+    status.textContent =
+      `Đã lấy: ${
+        position.coords.latitude.toFixed(6)
+      }, ${
+        position.coords.longitude.toFixed(6)
+      }`
+
+
+    button.textContent =
+      '📍 Lấy lại location'
+
+
+  } catch (error) {
+
+    console.error(
+      'GPS error:',
+      error
+    )
+
+
+    alert(
+      'Không thể lấy vị trí. Hãy kiểm tra quyền truy cập vị trí.'
+    )
+
+
+    button.textContent =
+      '📍 Lấy location'
+
+  } finally {
+
+    button.disabled = false
+
+  }
 }
 
 
 // ==========================================
-// ẢNH
+// CAMERA - CAPACITOR
+// ==========================================
+
+async function takePhoto() {
+
+  if (
+    !Capacitor.isNativePlatform()
+  ) {
+
+    alert(
+      'Trên trình duyệt, hãy sử dụng nút chọn ảnh bên dưới.'
+    )
+
+    return
+  }
+
+
+  try {
+
+    const permission =
+      await Camera.checkPermissions()
+
+
+    if (
+      permission.camera !== 'granted'
+    ) {
+
+      await Camera.requestPermissions()
+    }
+
+
+    const photo =
+      await Camera.getPhoto({
+
+        quality: 70,
+
+        resultType:
+          CameraResultType.DataUrl,
+
+        source:
+          CameraSource.Prompt
+
+      })
+
+
+    if (
+      !photo.dataUrl
+    ) {
+
+      return
+    }
+
+
+    surveyData.image =
+      photo.dataUrl
+
+
+    const preview =
+      document.querySelector(
+        '#imagePreview'
+      )
+
+
+    preview.innerHTML = `
+
+      <img
+        src="${photo.dataUrl}"
+        class="survey-image-preview"
+        alt="Ảnh khảo sát"
+      />
+
+    `
+
+  } catch (error) {
+
+    console.error(
+      'Camera error:',
+      error
+    )
+
+    alert(
+      'Không thể mở camera.'
+    )
+  }
+}
+
+
+// ==========================================
+// ẢNH WEB
 // ==========================================
 
 function handleImage(event) {
 
   const file =
-    event.target.files[0]
+    event?.target?.files?.[0]
 
 
   if (!file) {
@@ -1237,27 +1780,34 @@ function handleImage(event) {
     new FileReader()
 
 
-  reader.onload = () => {
+  reader.onload =
+    () => {
 
-    surveyData.image =
-      reader.result
-
-
-    document.querySelector(
-      '#imagePreview'
-    ).innerHTML = `
-
-      <img
-        src="${reader.result}"
-        class="survey-image-preview"
-        alt="Ảnh khảo sát"
-      />
-
-    `
-  }
+      surveyData.image =
+        reader.result
 
 
-  reader.readAsDataURL(file)
+      const preview =
+        document.querySelector(
+          '#imagePreview'
+        )
+
+
+      preview.innerHTML = `
+
+        <img
+          src="${reader.result}"
+          class="survey-image-preview"
+          alt="Ảnh khảo sát"
+        />
+
+      `
+    }
+
+
+  reader.readAsDataURL(
+    file
+  )
 }
 
 
@@ -1384,15 +1934,186 @@ function collectSurveyData() {
 
 
     location:
-      surveyData.location || null,
+      surveyData.location ||
+      null,
 
 
     image:
-      surveyData.image || null,
+      surveyData.image ||
+      null,
 
 
     status:
       'PENDING_SYNC'
+
+  }
+}
+
+
+// ==========================================
+// CAPACITOR NETWORK
+// ==========================================
+
+async function initNativeNetwork() {
+
+  if (
+    !Capacitor.isNativePlatform()
+  ) {
+
+    return
+  }
+
+
+  try {
+
+    const status =
+      await Network.getStatus()
+
+
+    updateNetworkUI(
+      status.connected
+    )
+
+
+    await Network.addListener(
+      'networkStatusChange',
+      (status) => {
+
+        updateNetworkUI(
+          status.connected
+        )
+
+
+        if (
+          status.connected
+        ) {
+
+          syncPendingSurveys()
+            .catch(
+              console.error
+            )
+        }
+
+      }
+    )
+
+  } catch (error) {
+
+    console.error(
+      'Network plugin error:',
+      error
+    )
+  }
+}
+
+
+function updateNetworkUI(
+  connected
+) {
+
+  document
+    .querySelectorAll(
+      '.network-status'
+    )
+    .forEach(
+      (status) => {
+
+        status.className =
+          `network-status ${
+            connected
+              ? 'online'
+              : 'offline'
+          }`
+
+        status.textContent =
+          connected
+            ? '● Online'
+            : '● Offline'
+
+      }
+    )
+}
+
+
+// ==========================================
+// LOCAL NOTIFICATION
+// ==========================================
+
+async function showSyncNotification() {
+
+  if (
+    !Capacitor.isNativePlatform()
+  ) {
+
+    return
+  }
+
+
+  try {
+
+    let permission =
+      await LocalNotifications
+        .checkPermissions()
+
+
+    if (
+      permission.display !==
+      'granted'
+    ) {
+
+      permission =
+        await LocalNotifications
+          .requestPermissions()
+    }
+
+
+    if (
+      permission.display !==
+      'granted'
+    ) {
+
+      return
+    }
+
+
+    await LocalNotifications.schedule({
+
+      notifications: [
+
+        {
+
+          id:
+            Math.floor(
+              Date.now() / 1000
+            ),
+
+          title:
+            'VKU Interview Survey',
+
+          body:
+            'Khảo sát đã được đồng bộ thành công.',
+
+          schedule: {
+
+            at:
+              new Date(
+                Date.now() + 1000
+              )
+
+          }
+
+        }
+
+      ]
+
+    })
+
+  } catch (error) {
+
+    console.error(
+      'Local notification error:',
+      error
+    )
   }
 }
 
@@ -1401,7 +2122,9 @@ function collectSurveyData() {
 // GỬI 1 KHẢO SÁT LÊN GOOGLE SHEET
 // ==========================================
 
-async function syncSurvey(survey) {
+async function syncSurvey(
+  survey
+) {
 
   console.log(
     'Đang đồng bộ khảo sát:',
@@ -1413,15 +2136,21 @@ async function syncSurvey(survey) {
     await fetch(
       API_URL,
       {
+
         method: 'POST',
 
         headers: {
+
           'Content-Type':
             'text/plain;charset=utf-8'
+
         },
 
         body:
-          JSON.stringify(survey)
+          JSON.stringify(
+            survey
+          )
+
       }
     )
 
@@ -1453,8 +2182,6 @@ async function syncSurvey(survey) {
   }
 
 
-  // Đồng bộ thành công
-
   survey.status =
     'SYNCED'
 
@@ -1468,6 +2195,9 @@ async function syncSurvey(survey) {
     'Đồng bộ thành công:',
     survey.id
   )
+
+
+  await showSyncNotification()
 }
 
 
@@ -1496,7 +2226,8 @@ async function syncPendingSurveys() {
     const pendingSurveys =
       allSurveys.filter(
         (survey) =>
-          survey.status !== 'SYNCED'
+          survey.status !==
+          'SYNCED'
       )
 
 
@@ -1532,12 +2263,10 @@ async function syncPendingSurveys() {
           error
         )
 
-        // Dừng tại đây.
-        // Lần sau có mạng sẽ thử lại.
-
         break
       }
     }
+
 
   } catch (error) {
 
@@ -1550,10 +2279,81 @@ async function syncPendingSurveys() {
 
 
 // ==========================================
+// RESET FORM
+// ==========================================
+
+function resetSurveyForm() {
+
+  const form =
+    document.querySelector(
+      '#surveyForm'
+    )
+
+
+  if (form) {
+    form.reset()
+  }
+
+
+  surveyData = {}
+
+
+  const interviewSection =
+    document.querySelector(
+      '#interviewSection'
+    )
+
+  if (interviewSection) {
+
+    interviewSection.style.display =
+      'none'
+  }
+
+
+  const notInterviewSection =
+    document.querySelector(
+      '#notInterviewSection'
+    )
+
+  if (notInterviewSection) {
+
+    notInterviewSection.style.display =
+      'none'
+  }
+
+
+  const locationStatus =
+    document.querySelector(
+      '#locationStatus'
+    )
+
+  if (locationStatus) {
+
+    locationStatus.textContent =
+      'Chưa lấy vị trí'
+  }
+
+
+  const imagePreview =
+    document.querySelector(
+      '#imagePreview'
+    )
+
+  if (imagePreview) {
+
+    imagePreview.innerHTML =
+      ''
+  }
+}
+
+
+// ==========================================
 // SUBMIT KHẢO SÁT
 // ==========================================
 
-async function submitSurvey(event) {
+async function submitSurvey(
+  event
+) {
 
   event.preventDefault()
 
@@ -1564,17 +2364,15 @@ async function submitSurvey(event) {
     )
 
 
-  // Kiểm tra HTML required
-
-  if (!form.checkValidity()) {
+  if (
+    !form.checkValidity()
+  ) {
 
     form.reportValidity()
 
     return
   }
 
-
-  // Tạo dữ liệu
 
   const survey =
     collectSurveyData()
@@ -1617,39 +2415,16 @@ async function submitSurvey(event) {
   // OFFLINE
   // ----------------------------------------
 
-  if (!navigator.onLine) {
+  if (
+    !navigator.onLine
+  ) {
 
     alert(
       'Đã lưu khảo sát offline. Khi có mạng, dữ liệu sẽ tự động đồng bộ.'
     )
 
 
-    form.reset()
-
-
-    surveyData = {}
-
-
-    document.querySelector(
-      '#interviewSection'
-    ).style.display = 'none'
-
-
-    document.querySelector(
-      '#notInterviewSection'
-    ).style.display = 'none'
-
-
-    document.querySelector(
-      '#locationStatus'
-    ).textContent =
-      'Chưa lấy vị trí'
-
-
-    document.querySelector(
-      '#imagePreview'
-    ).innerHTML = ''
-
+    resetSurveyForm()
 
     return
   }
@@ -1671,33 +2446,7 @@ async function submitSurvey(event) {
     )
 
 
-    // Reset form
-
-    form.reset()
-
-
-    surveyData = {}
-
-
-    document.querySelector(
-      '#interviewSection'
-    ).style.display = 'none'
-
-
-    document.querySelector(
-      '#notInterviewSection'
-    ).style.display = 'none'
-
-
-    document.querySelector(
-      '#locationStatus'
-    ).textContent =
-      'Chưa lấy vị trí'
-
-
-    document.querySelector(
-      '#imagePreview'
-    ).innerHTML = ''
+    resetSurveyForm()
 
 
   } catch (error) {
@@ -1728,8 +2477,6 @@ window.addEventListener(
     )
 
 
-    // Cập nhật trạng thái Online
-
     const status =
       document.querySelector(
         '.network-status'
@@ -1745,8 +2492,6 @@ window.addEventListener(
         '● Online'
     }
 
-
-    // Tự động đồng bộ
 
     await syncPendingSurveys()
   }
@@ -1788,21 +2533,7 @@ window.addEventListener(
 // KHỞI ĐỘNG APP
 // ==========================================
 
-renderHome()
-
-
-// ==========================================
-// KIỂM TRA ĐỒNG BỘ KHI MỞ APP
-// ==========================================
-
-syncPendingSurveys()
-  .catch((error) => {
-
-    console.error(
-      'Lỗi đồng bộ khi khởi động:',
-      error
-    )
-  })
+initNativeNetwork()
 
 
 // ==========================================
@@ -1833,6 +2564,7 @@ if (
           '[PWA] Service Worker registered:',
           registration.scope
         )
+
 
       } catch (error) {
 
