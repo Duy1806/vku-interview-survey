@@ -12,155 +12,108 @@ import { Network } from '@capacitor/network'
 import { LocalNotifications } from '@capacitor/local-notifications'
 
 import {
+  signInWithPopup,
   GoogleAuthProvider,
   onAuthStateChanged,
-  signInWithPopup,
+  setPersistence,
+  browserLocalPersistence,
   signOut
 } from 'firebase/auth'
 
 import { auth } from './firebase.js'
 
+const app = document.querySelector('#app')
 
-// ==========================================
-// FIREBASE GOOGLE LOGIN
-// ==========================================
+const googleProvider = new GoogleAuthProvider()
 
-const googleProvider =
-  new GoogleAuthProvider()
 
-let currentUser = null
-
+function renderAuthLoading() {
+  app.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;color:#334155;font-size:16px;">
+      <div style="text-align:center;">
+        <div style="font-size:40px;margin-bottom:12px;">🎓</div>
+        <div>Đang kiểm tra đăng nhập...</div>
+      </div>
+    </div>
+  `
+}
 
 function renderLogin() {
-
   app.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f1f5f9;box-sizing:border-box;">
+      <div style="width:min(420px,100%);background:white;border-radius:20px;padding:32px;box-shadow:0 12px 35px rgba(15,23,42,.12);text-align:center;">
+        <div style="font-size:48px;margin-bottom:10px;">🎓</div>
 
-    <div
-      style="
-        min-height:100vh;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        padding:24px;
-        background:#f1f5f9;
-        box-sizing:border-box;
-      "
-    >
+        <h1>VKU Interview Survey</h1>
 
-      <div
-        style="
-          width:min(420px,100%);
-          background:white;
-          border-radius:20px;
-          padding:32px;
-          box-shadow:0 12px 35px rgba(15,23,42,.12);
-          text-align:center;
-        "
-      >
-
-        <div style="font-size:48px;">
-          🎓
-        </div>
-
-        <h1>
-          VKU Interview Survey
-        </h1>
-
-        <p
-          style="
-            color:#64748b;
-            line-height:1.6;
-          "
-        >
+        <p style="color:#64748b;line-height:1.6;margin-bottom:24px;">
           Đăng nhập bằng Google để thực hiện khảo sát.
         </p>
 
-      <button
-        id="googleLoginBtn"
-        class="primary-btn google-login-btn"
-        style="
-          width:100%;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          gap:12px;
-        "
-      >
-        <img
-          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-          alt="Google"
-          style="
-            width:20px;
-            height:20px;
-          "
-        />
+        <button
+          id="googleLoginBtn"
+          class="primary-btn google-login-btn"
+          type="button"
+          style="width:100%;display:flex;align-items:center;justify-content:center;gap:12px;"
+        >
+          <img
+            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+            alt="Google"
+            style="width:20px;height:20px;"
+          />
 
-        <span>
-          Đăng nhập bằng Google
-        </span>
-      </button>
-
+          <span>Đăng nhập bằng Google</span>
+        </button>
       </div>
-
     </div>
-
   `
 
-  document
-    .querySelector('#googleLoginBtn')
-    .addEventListener(
+  const button = document.querySelector('#googleLoginBtn')
+
+  if (button) {
+    button.addEventListener(
       'click',
       loginWithGoogle
     )
-}
-
-
-async function loginWithGoogle() {
-
-  const button =
-    document.querySelector(
-      '#googleLoginBtn'
-    )
-
-  try {
-
-    button.disabled = true
-
-    button.textContent =
-      '⏳ Đang đăng nhập...'
-
-    await signInWithPopup(
-      auth,
-      googleProvider
-    )
-
-  } catch (error) {
-
-    console.error(
-      'Google Login Error:',
-      error
-    )
-
-    alert(
-      'Đăng nhập Google thất bại. Hãy kiểm tra cấu hình Firebase.'
-    )
-
-    if (button) {
-
-      button.disabled = false
-
-      button.textContent =
-        '🔐 Đăng nhập bằng Google'
-    }
   }
 }
 
+async function loginWithGoogle() {
+  try {
+    console.log('🔵 Đang đăng nhập Google...')
+
+    await setPersistence(auth, browserLocalPersistence)
+
+    const provider = new GoogleAuthProvider()
+
+    const result = await signInWithPopup(auth, provider)
+
+    console.log('✅ Google Login Success:', result.user.email)
+
+  } catch (error) {
+    console.error('❌ Google Login Error:', error)
+
+    if (error.code === 'auth/popup-blocked') {
+      alert('Trình duyệt đã chặn cửa sổ đăng nhập Google.')
+    } else if (error.code === 'auth/popup-closed-by-user') {
+      console.log('Người dùng đóng cửa sổ đăng nhập.')
+    } else {
+      alert('Đăng nhập Google thất bại: ' + error.message)
+    }
+  }
+}
 
 async function logout() {
 
   try {
 
     await signOut(auth)
+
+    currentUser = null
+
+    console.log(
+      'Đã đăng xuất'
+    )
 
   } catch (error) {
 
@@ -174,7 +127,6 @@ async function logout() {
     )
   }
 }
-
 
 function getUserHTML() {
 
@@ -239,7 +191,7 @@ function getUserHTML() {
 // ==========================================
 
 const API_URL =
-  'https://script.google.com/macros/s/AKfycbyGEe5-EXSm2QilztXZFnI7Xe32i-jwPB5dOdok7jaThaHIS0r_5dSItIE_DMgMxdm-/exec'
+  'https://script.google.com/macros/s/AKfycbyGEe5-EXSm2QilztXZFnI7Xe32i-jwPB5Odok7jaThaHIS0r_5dSItIE_DMgMxdm-/exec'
 
 
 // ==========================================
@@ -256,12 +208,6 @@ const DB_VERSION =
   2
 
 
-const app =
-  document.querySelector(
-    '#app'
-  )
-
-
 // Dữ liệu tạm của form
 let surveyData = {}
 
@@ -270,33 +216,42 @@ let surveyData = {}
 // FIREBASE AUTH STATE
 // ==========================================
 
-onAuthStateChanged(
-  auth,
-  (user) => {
+renderAuthLoading()
 
-    currentUser = user
+let currentUser = null
+let authReady = false
 
-    if (!user) {
+async function initFirebaseAuth() {
+  console.log('🔐 Đang khởi tạo Firebase Auth...')
 
-      renderLogin()
+  renderAuthLoading()
 
-      return
-    }
-
-    renderHome()
-
-    syncPendingSurveys()
-      .catch(
-        (error) => {
-
-          console.error(
-            'Lỗi đồng bộ khi khởi động:',
-            error
-          )
-        }
-      )
+  try {
+    await setPersistence(auth, browserLocalPersistence)
+    console.log('✅ Firebase persistence OK')
+  } catch (error) {
+    console.error('❌ Firebase persistence error:', error)
   }
-)
+
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user
+    authReady = true
+
+    console.log(
+      '🔐 Auth state:',
+      user ? `Đã đăng nhập: ${user.email}` : 'Chưa đăng nhập'
+    )
+
+    if (user) {
+      renderHome()
+    } else {
+      renderLogin()
+    }
+  })
+}
+
+initFirebaseAuth()
+
 
 
 // ==========================================
@@ -308,11 +263,13 @@ async function getStatistics() {
   try {
 
     const response =
-      await fetch(API_URL, {
-        method: 'GET',
-        cache: 'no-store'
-      })
-
+      await fetch(
+        API_URL,
+        {
+          method: 'GET',
+          cache: 'no-store'
+        }
+      )
 
     if (!response.ok) {
 
@@ -321,16 +278,13 @@ async function getStatistics() {
       )
     }
 
-
     const result =
       await response.json()
-
 
     console.log(
       '📊 Statistics API:',
       result
     )
-
 
     if (!result.success) {
 
@@ -340,14 +294,12 @@ async function getStatistics() {
       )
     }
 
-
     if (!result.statistics) {
 
       throw new Error(
         'API không trả về statistics'
       )
     }
-
 
     return {
 
@@ -373,7 +325,6 @@ async function getStatistics() {
 
     }
 
-
   } catch (error) {
 
     console.error(
@@ -381,17 +332,20 @@ async function getStatistics() {
       error
     )
 
-
-    // Không giả vờ rằng dữ liệu bị mất.
-    // Giữ trạng thái lỗi để kiểm tra API.
     return {
+
       total: '--',
+
       interviewed: '--',
+
       notInterviewed: '--',
+
       lookingForJob: '--'
+
     }
   }
 }
+
 
 // ==========================================
 // MỞ DATABASE
@@ -992,7 +946,7 @@ function renderSurvey() {
               </h2>
 
               <p>
-                Thông tin về quá trình tìm việc của bạn
+                Cho biết tình trạng phỏng vấn của bạn
               </p>
 
             </div>
@@ -1002,8 +956,7 @@ function renderSurvey() {
 
               <label>
 
-                Bạn đã từng tham gia
-                phỏng vấn xin việc chưa?
+                Bạn đã từng tham gia phỏng vấn chưa?
 
                 <span class="required">
                   *
@@ -1023,7 +976,7 @@ function renderSurvey() {
                     required
                   />
 
-                  Đã từng
+                  Đã từng phỏng vấn
 
                 </label>
 
@@ -1036,9 +989,224 @@ function renderSurvey() {
                     value="Chưa"
                   />
 
-                  Chưa
+                  Chưa từng phỏng vấn
 
                 </label>
+
+              </div>
+
+            </div>
+
+
+            <div
+              id="interviewSection"
+              style="display:none;"
+            >
+
+              <div class="form-group">
+
+                <label for="interviewCount">
+
+                  Số lần phỏng vấn
+
+                </label>
+
+                <input
+                  id="interviewCount"
+                  type="number"
+                  min="1"
+                  placeholder="Ví dụ: 2"
+                />
+
+              </div>
+
+
+              <div class="form-group">
+
+                <label for="company">
+
+                  Công ty
+
+                </label>
+
+                <input
+                  id="company"
+                  type="text"
+                  placeholder="Tên công ty"
+                />
+
+              </div>
+
+
+              <div class="form-group">
+
+                <label for="position">
+
+                  Vị trí ứng tuyển
+
+                </label>
+
+                <input
+                  id="position"
+                  type="text"
+                  placeholder="Ví dụ: Frontend Developer"
+                />
+
+              </div>
+
+
+              <div class="form-group">
+
+                <label for="interviewLocation">
+
+                  Địa điểm phỏng vấn
+
+                </label>
+
+                <input
+                  id="interviewLocation"
+                  type="text"
+                  placeholder="Ví dụ: Đà Nẵng"
+                />
+
+              </div>
+
+
+              <div class="form-group">
+
+                <label>
+
+                  Hình thức phỏng vấn
+
+                </label>
+
+                <div class="radio-group">
+
+                  <label>
+
+                    <input
+                      type="radio"
+                      name="interviewType"
+                      value="Trực tiếp"
+                    />
+
+                    Trực tiếp
+
+                  </label>
+
+
+                  <label>
+
+                    <input
+                      type="radio"
+                      name="interviewType"
+                      value="Online"
+                    />
+
+                    Online
+
+                  </label>
+
+                </div>
+
+              </div>
+
+
+              <div class="form-group">
+
+                <label for="result">
+
+                  Kết quả
+
+                </label>
+
+                <select id="result">
+
+                  <option value="">
+                    -- Chọn kết quả --
+                  </option>
+
+                  <option value="Đậu">
+                    Đậu
+                  </option>
+
+                  <option value="Rớt">
+                    Rớt
+                  </option>
+
+                  <option value="Đang chờ">
+                    Đang chờ
+                  </option>
+
+                  <option value="Khác">
+                    Khác
+                  </option>
+
+                </select>
+
+              </div>
+
+            </div>
+
+
+            <div
+              id="notInterviewSection"
+              style="display:none;"
+            >
+
+              <div class="form-group">
+
+                <label>
+
+                  Bạn có đang tìm việc không?
+
+                </label>
+
+                <div class="radio-group">
+
+                  <label>
+
+                    <input
+                      type="radio"
+                      name="lookingForJob"
+                      value="Có"
+                    />
+
+                    Có
+
+                  </label>
+
+
+                  <label>
+
+                    <input
+                      type="radio"
+                      name="lookingForJob"
+                      value="Không"
+                    />
+
+                    Không
+
+                  </label>
+
+                </div>
+
+              </div>
+
+
+              <div class="form-group">
+
+                <label for="reason">
+
+                  Lý do chưa phỏng vấn
+
+                </label>
+
+                <textarea
+                  id="reason"
+                  rows="4"
+                  placeholder="Ví dụ: Chưa tìm được công việc phù hợp..."
+                ></textarea>
 
               </div>
 
@@ -1048,242 +1216,7 @@ function renderSurvey() {
 
 
           <!-- ================================
-               3. ĐÃ PHỎNG VẤN
-          ================================= -->
-
-          <section
-            class="form-card"
-            id="interviewSection"
-            style="display:none;"
-          >
-
-            <div class="form-title">
-
-              <h2>
-                3. Thông tin phỏng vấn
-              </h2>
-
-              <p>
-                Thông tin về quá trình phỏng vấn
-              </p>
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label for="interviewCount">
-                Số lần đã phỏng vấn
-              </label>
-
-              <input
-                id="interviewCount"
-                type="number"
-                min="1"
-                placeholder="Ví dụ: 2"
-              />
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label for="company">
-                Công ty đã phỏng vấn
-              </label>
-
-              <input
-                id="company"
-                type="text"
-                placeholder="Tên công ty"
-              />
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label for="position">
-                Vị trí ứng tuyển
-              </label>
-
-              <input
-                id="position"
-                type="text"
-                placeholder="Ví dụ: Tester, Developer..."
-              />
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label for="interviewLocation">
-                Địa điểm phỏng vấn
-              </label>
-
-              <input
-                id="interviewLocation"
-                type="text"
-                placeholder="Ví dụ: Đà Nẵng"
-              />
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label>
-                Hình thức phỏng vấn
-              </label>
-
-              <div class="radio-group">
-
-                <label>
-
-                  <input
-                    type="radio"
-                    name="interviewType"
-                    value="Trực tiếp"
-                  />
-
-                  Trực tiếp
-
-                </label>
-
-
-                <label>
-
-                  <input
-                    type="radio"
-                    name="interviewType"
-                    value="Online"
-                  />
-
-                  Online
-
-                </label>
-
-              </div>
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label for="result">
-                Kết quả
-              </label>
-
-              <select id="result">
-
-                <option value="">
-                  -- Chọn kết quả --
-                </option>
-
-                <option value="Đậu">
-                  Đậu
-                </option>
-
-                <option value="Rớt">
-                  Rớt
-                </option>
-
-                <option value="Đang chờ">
-                  Đang chờ
-                </option>
-
-                <option value="Khác">
-                  Khác
-                </option>
-
-              </select>
-
-            </div>
-
-          </section>
-
-
-          <!-- ================================
-               3. CHƯA PHỎNG VẤN
-          ================================= -->
-
-          <section
-            class="form-card"
-            id="notInterviewSection"
-            style="display:none;"
-          >
-
-            <div class="form-title">
-
-              <h2>
-                3. Nhu cầu việc làm
-              </h2>
-
-              <p>
-                Hãy cho chúng tôi biết thêm về nhu cầu của bạn
-              </p>
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label>
-                Bạn có đang tìm kiếm việc làm không?
-              </label>
-
-              <div class="radio-group">
-
-                <label>
-
-                  <input
-                    type="radio"
-                    name="lookingForJob"
-                    value="Có"
-                  />
-
-                  Có
-
-                </label>
-
-
-                <label>
-
-                  <input
-                    type="radio"
-                    name="lookingForJob"
-                    value="Không"
-                  />
-
-                  Không
-
-                </label>
-
-              </div>
-
-            </div>
-
-
-            <div class="form-group">
-
-              <label for="reason">
-                Lý do chưa tham gia phỏng vấn
-              </label>
-
-              <textarea
-                id="reason"
-                rows="4"
-                placeholder="Nhập lý do..."
-              ></textarea>
-
-            </div>
-
-          </section>
-
-
-          <!-- ================================
-               4. MONG MUỐN VIỆC LÀM
+               3. MONG MUỐN VIỆC LÀM
           ================================= -->
 
           <section class="form-card">
@@ -1291,11 +1224,11 @@ function renderSurvey() {
             <div class="form-title">
 
               <h2>
-                4. Mong muốn việc làm
+                3. Mong muốn việc làm
               </h2>
 
               <p>
-                Chia sẻ công việc bạn đang hướng đến
+                Chia sẻ định hướng công việc của bạn
               </p>
 
             </div>
@@ -1312,7 +1245,7 @@ function renderSurvey() {
               <textarea
                 id="jobWish"
                 rows="5"
-                placeholder="Ví dụ: Tester, QA, Developer..."
+                placeholder="Ví dụ: Công việc IT, Tester, Developer, lương mong muốn, hình thức làm việc..."
               ></textarea>
 
             </div>
@@ -1321,7 +1254,7 @@ function renderSurvey() {
 
 
           <!-- ================================
-               5. LOCATION
+               4. VỊ TRÍ
           ================================= -->
 
           <section class="form-card">
@@ -1329,30 +1262,33 @@ function renderSurvey() {
             <div class="form-title">
 
               <h2>
-                5. Thông tin vị trí
+                4. Vị trí hiện tại
               </h2>
 
               <p>
-                Có thể lấy vị trí hiện tại của bạn
+                Lấy vị trí GPS của thiết bị
               </p>
 
             </div>
 
 
-            <div class="location-row">
+            <div class="location-box">
+
+              <div
+                id="locationStatus"
+                class="location-status"
+              >
+                Chưa lấy vị trí
+              </div>
+
 
               <button
+                id="getLocationBtn"
                 type="button"
-                id="locationBtn"
                 class="secondary-btn"
               >
-                📍 Lấy location
+                📍 Lấy vị trí hiện tại
               </button>
-
-
-              <span id="locationStatus">
-                Chưa lấy vị trí
-              </span>
 
             </div>
 
@@ -1360,7 +1296,7 @@ function renderSurvey() {
 
 
           <!-- ================================
-               6. ẢNH
+               5. HÌNH ẢNH
           ================================= -->
 
           <section class="form-card">
@@ -1368,45 +1304,54 @@ function renderSurvey() {
             <div class="form-title">
 
               <h2>
-                6. Ảnh
+                5. Hình ảnh
               </h2>
 
               <p>
-                Không bắt buộc
+                Có thể đính kèm hình ảnh nếu cần
               </p>
 
             </div>
 
 
-            <div class="form-group">
+            <div class="image-section">
 
               <button
+                id="takePhotoBtn"
                 type="button"
-                id="cameraBtn"
                 class="secondary-btn"
               >
                 📷 Chụp ảnh
               </button>
 
 
-              <input
-                id="image"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style="margin-top:10px;"
-              />
+              <button
+                id="choosePhotoBtn"
+                type="button"
+                class="secondary-btn"
+              >
+                🖼️ Chọn ảnh
+              </button>
 
 
-              <small>
+              <div
+                id="imagePreview"
+                style="display:none;margin-top:16px;"
+              >
 
-                Có thể chụp ảnh hoặc
-                chọn ảnh từ thiết bị.
+                <img
+                  id="previewImage"
+                  src=""
+                  alt="Ảnh khảo sát"
+                  style="
+                    max-width:100%;
+                    max-height:300px;
+                    border-radius:12px;
+                    object-fit:contain;
+                  "
+                />
 
-              </small>
-
-
-              <div id="imagePreview"></div>
+              </div>
 
             </div>
 
@@ -1417,18 +1362,27 @@ function renderSurvey() {
                SUBMIT
           ================================= -->
 
-          <div class="form-actions">
+          <section class="form-card">
 
             <button
+              id="submitBtn"
               type="submit"
               class="primary-btn"
             >
-
-              💾 Gửi khảo sát
-
+              📤 Gửi khảo sát
             </button>
 
-          </div>
+
+            <button
+              id="backHomeBtn"
+              type="button"
+              class="secondary-btn"
+              style="margin-top:12px;"
+            >
+              ← Về trang chủ
+            </button>
+
+          </section>
 
 
         </form>
@@ -1440,16 +1394,9 @@ function renderSurvey() {
   `
 
 
-  setupSurveyEvents()
-}
-
-
-// ==========================================
-// SETUP EVENTS
-// ==========================================
-
-function setupSurveyEvents() {
-
+  // ==========================================
+  // INTERVIEW STATUS
+  // ==========================================
 
   document
     .querySelectorAll(
@@ -1460,373 +1407,150 @@ function setupSurveyEvents() {
 
         radio.addEventListener(
           'change',
-          updateInterviewSection
+          () => {
+
+            const value =
+              document.querySelector(
+                'input[name="interviewed"]:checked'
+              )?.value
+
+            const interviewSection =
+              document.querySelector(
+                '#interviewSection'
+              )
+
+            const notInterviewSection =
+              document.querySelector(
+                '#notInterviewSection'
+              )
+
+            if (value === 'Có') {
+
+              interviewSection.style.display =
+                'block'
+
+              notInterviewSection.style.display =
+                'none'
+
+            } else if (value === 'Chưa') {
+
+              interviewSection.style.display =
+                'none'
+
+              notInterviewSection.style.display =
+                'block'
+
+            }
+
+          }
         )
 
       }
     )
 
 
-  document
-    .querySelector('#locationBtn')
-    .addEventListener(
-      'click',
-      getLocation
+  // ==========================================
+  // GPS
+  // ==========================================
+
+  const getLocationBtn =
+    document.querySelector(
+      '#getLocationBtn'
     )
 
+  if (getLocationBtn) {
 
-  document
-    .querySelector('#cameraBtn')
-    .addEventListener(
+    getLocationBtn.addEventListener(
+      'click',
+      getCurrentLocation
+    )
+  }
+
+
+  // ==========================================
+  // CAMERA
+  // ==========================================
+
+  const takePhotoBtn =
+    document.querySelector(
+      '#takePhotoBtn'
+    )
+
+  if (takePhotoBtn) {
+
+    takePhotoBtn.addEventListener(
       'click',
       takePhoto
     )
+  }
 
 
-  document
-    .querySelector('#image')
-    .addEventListener(
-      'change',
-      handleImage
+  const choosePhotoBtn =
+    document.querySelector(
+      '#choosePhotoBtn'
     )
 
+  if (choosePhotoBtn) {
 
-  document
-    .querySelector('#surveyForm')
-    .addEventListener(
+    choosePhotoBtn.addEventListener(
+      'click',
+      choosePhoto
+    )
+  }
+
+
+  // ==========================================
+  // SUBMIT
+  // ==========================================
+
+  const form =
+    document.querySelector(
+      '#surveyForm'
+    )
+
+  if (form) {
+
+    form.addEventListener(
       'submit',
       submitSurvey
     )
-}
-
-
-// ==========================================
-// HIỂN THỊ PHẦN PHỎNG VẤN
-// ==========================================
-
-function updateInterviewSection() {
-
-  const selected =
-    document.querySelector(
-      'input[name="interviewed"]:checked'
-    )
-
-
-  if (!selected) {
-    return
   }
 
 
-  const interviewSection =
+  // ==========================================
+  // BACK HOME
+  // ==========================================
+
+  const backHomeBtn =
     document.querySelector(
-      '#interviewSection'
+      '#backHomeBtn'
     )
 
-
-  const notInterviewSection =
-    document.querySelector(
-      '#notInterviewSection'
-    )
-
-
-  if (
-    selected.value === 'Có'
-  ) {
-
-    interviewSection.style.display =
-      'block'
-
-    notInterviewSection.style.display =
-      'none'
-
-  } else {
-
-    interviewSection.style.display =
-      'none'
-
-    notInterviewSection.style.display =
-      'block'
-  }
-}
-
-
-// ==========================================
-// GPS - CAPACITOR / WEB
-// ==========================================
-
-async function getLocation() {
-
-  const button =
-    document.querySelector(
-      '#locationBtn'
-    )
-
-  const status =
-    document.querySelector(
-      '#locationStatus'
-    )
-
-
-  button.disabled = true
-
-  button.textContent =
-    '📍 Đang lấy vị trí...'
-
-
-  try {
-
-    let position
-
-
-    // Android / Capacitor
-    if (
-      Capacitor.isNativePlatform()
-    ) {
-
-      await Geolocation.requestPermissions()
-
-      position =
-        await Geolocation.getCurrentPosition(
-          {
-            enableHighAccuracy: true,
-            timeout: 10000
-          }
-        )
-
-    }
-
-    // Web / PWA
-    else {
-
-      if (!navigator.geolocation) {
-
-        throw new Error(
-          'Thiết bị không hỗ trợ GPS.'
-        )
-      }
-
-
-      position =
-        await new Promise(
-          (resolve, reject) => {
-
-            navigator.geolocation
-              .getCurrentPosition(
-                resolve,
-                reject,
-                {
-                  enableHighAccuracy: true,
-                  timeout: 10000,
-                  maximumAge: 0
-                }
-              )
-
-          }
-        )
-    }
-
-
-    surveyData.location = {
-
-      latitude:
-        position.coords.latitude,
-
-      longitude:
-        position.coords.longitude
-
-    }
-
-
-    status.textContent =
-      `Đã lấy: ${
-        position.coords.latitude.toFixed(6)
-      }, ${
-        position.coords.longitude.toFixed(6)
-      }`
-
-
-    button.textContent =
-      '📍 Lấy lại location'
-
-
-  } catch (error) {
-
-    console.error(
-      'GPS error:',
-      error
-    )
-
-
-    alert(
-      'Không thể lấy vị trí. Hãy kiểm tra quyền truy cập vị trí.'
-    )
-
-
-    button.textContent =
-      '📍 Lấy location'
-
-  } finally {
-
-    button.disabled = false
-
-  }
-}
-
-
-// ==========================================
-// CAMERA - CAPACITOR
-// ==========================================
-
-async function takePhoto() {
-
-  if (
-    !Capacitor.isNativePlatform()
-  ) {
-
-    alert(
-      'Trên trình duyệt, hãy sử dụng nút chọn ảnh bên dưới.'
-    )
-
-    return
-  }
-
-
-  try {
-
-    const permission =
-      await Camera.checkPermissions()
-
-
-    if (
-      permission.camera !== 'granted'
-    ) {
-
-      await Camera.requestPermissions()
-    }
-
-
-    const photo =
-      await Camera.getPhoto({
-
-        quality: 70,
-
-        resultType:
-          CameraResultType.DataUrl,
-
-        source:
-          CameraSource.Prompt
-
-      })
-
-
-    if (
-      !photo.dataUrl
-    ) {
-
-      return
-    }
-
-
-    surveyData.image =
-      photo.dataUrl
-
-
-    const preview =
-      document.querySelector(
-        '#imagePreview'
-      )
-
-
-    preview.innerHTML = `
-
-      <img
-        src="${photo.dataUrl}"
-        class="survey-image-preview"
-        alt="Ảnh khảo sát"
-      />
-
-    `
-
-  } catch (error) {
-
-    console.error(
-      'Camera error:',
-      error
-    )
-
-    alert(
-      'Không thể mở camera.'
+  if (backHomeBtn) {
+
+    backHomeBtn.addEventListener(
+      'click',
+      renderHome
     )
   }
 }
 
 
 // ==========================================
-// ẢNH WEB
-// ==========================================
-
-function handleImage(event) {
-
-  const file =
-    event?.target?.files?.[0]
-
-
-  if (!file) {
-    return
-  }
-
-
-  const reader =
-    new FileReader()
-
-
-  reader.onload =
-    () => {
-
-      surveyData.image =
-        reader.result
-
-
-      const preview =
-        document.querySelector(
-          '#imagePreview'
-        )
-
-
-      preview.innerHTML = `
-
-        <img
-          src="${reader.result}"
-          class="survey-image-preview"
-          alt="Ảnh khảo sát"
-        />
-
-      `
-    }
-
-
-  reader.readAsDataURL(
-    file
-  )
-}
-
-
-// ==========================================
-// TẠO DATA KHẢO SÁT
+// COLLECT SURVEY DATA
 // ==========================================
 
 function collectSurveyData() {
+
+  const gender =
+    document.querySelector(
+      'input[name="gender"]:checked'
+    )?.value || ''
 
 
   const interviewed =
     document.querySelector(
       'input[name="interviewed"]:checked'
-    )?.value || ''
-
-
-  const gender =
-    document.querySelector(
-      'input[name="gender"]:checked'
     )?.value || ''
 
 
@@ -1951,6 +1675,879 @@ function collectSurveyData() {
 
 
 // ==========================================
+// GET LOCATION
+// ==========================================
+
+async function getCurrentLocation() {
+
+  const status =
+    document.querySelector(
+      '#locationStatus'
+    )
+
+  const button =
+    document.querySelector(
+      '#getLocationBtn'
+    )
+
+  if (button) {
+
+    button.disabled = true
+
+    button.textContent =
+      '⏳ Đang lấy vị trí...'
+  }
+
+  try {
+
+    let position
+
+    if (
+      Capacitor.isNativePlatform()
+    ) {
+
+      const permission =
+        await Geolocation
+          .checkPermissions()
+
+      if (
+        permission.location !==
+        'granted'
+      ) {
+
+        await Geolocation
+          .requestPermissions()
+      }
+
+      position =
+        await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000
+        })
+
+    } else {
+
+      position =
+        await new Promise(
+          (resolve, reject) => {
+
+            navigator.geolocation.getCurrentPosition(
+              resolve,
+              reject,
+              {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+              }
+            )
+
+          }
+        )
+    }
+
+
+    const latitude =
+      position.coords.latitude
+
+    const longitude =
+      position.coords.longitude
+
+
+    surveyData.location = {
+
+      latitude,
+
+      longitude
+
+    }
+
+
+    if (status) {
+
+      status.innerHTML = `
+        <div>
+          <strong>Đã lấy vị trí</strong>
+        </div>
+
+        <div>
+          Latitude:
+          ${latitude}
+        </div>
+
+        <div>
+          Longitude:
+          ${longitude}
+        </div>
+      `
+    }
+
+    console.log(
+      'GPS:',
+      surveyData.location
+    )
+
+  } catch (error) {
+
+    console.error(
+      'Location Error:',
+      error
+    )
+
+    if (status) {
+
+      status.textContent =
+        'Không thể lấy vị trí.'
+    }
+
+    alert(
+      'Không thể lấy vị trí hiện tại.\n\n' +
+      'Hãy kiểm tra quyền truy cập vị trí của trình duyệt hoặc thiết bị.'
+    )
+
+  } finally {
+
+    if (button) {
+
+      button.disabled = false
+
+      button.textContent =
+        '📍 Lấy vị trí hiện tại'
+    }
+  }
+}
+
+
+// ==========================================
+// TAKE PHOTO
+// ==========================================
+
+async function takePhoto() {
+
+  try {
+
+    if (
+      Capacitor.isNativePlatform()
+    ) {
+
+      const image =
+        await Camera.getPhoto({
+
+          quality: 80,
+
+          allowEditing: false,
+
+          resultType:
+            CameraResultType.Base64,
+
+          source:
+            CameraSource.Camera
+
+        })
+
+      if (image.base64String) {
+
+        surveyData.image =
+          `data:image/${image.format};base64,${image.base64String}`
+
+        showImagePreview(
+          surveyData.image
+        )
+      }
+
+    } else {
+
+      await openFilePicker(
+        true
+      )
+    }
+
+  } catch (error) {
+
+    console.error(
+      'Camera Error:',
+      error
+    )
+
+    alert(
+      'Không thể chụp ảnh.'
+    )
+  }
+}
+
+
+// ==========================================
+// CHOOSE PHOTO
+// ==========================================
+
+async function choosePhoto() {
+
+  try {
+
+    if (
+      Capacitor.isNativePlatform()
+    ) {
+
+      const image =
+        await Camera.getPhoto({
+
+          quality: 80,
+
+          allowEditing: false,
+
+          resultType:
+            CameraResultType.Base64,
+
+          source:
+            CameraSource.Photos
+
+        })
+
+      if (image.base64String) {
+
+        surveyData.image =
+          `data:image/${image.format};base64,${image.base64String}`
+
+        showImagePreview(
+          surveyData.image
+        )
+      }
+
+    } else {
+
+      await openFilePicker(
+        false
+      )
+    }
+
+  } catch (error) {
+
+    console.error(
+      'Choose Photo Error:',
+      error
+    )
+
+    alert(
+      'Không thể chọn ảnh.'
+    )
+  }
+}
+
+
+// ==========================================
+// FILE PICKER WEB
+// ==========================================
+
+function openFilePicker(
+  useCamera
+) {
+
+  return new Promise(
+    (resolve, reject) => {
+
+      const input =
+        document.createElement(
+          'input'
+        )
+
+      input.type =
+        'file'
+
+      input.accept =
+        'image/*'
+
+      if (useCamera) {
+
+        input.setAttribute(
+          'capture',
+          'environment'
+        )
+      }
+
+      input.onchange =
+        () => {
+
+          const file =
+            input.files?.[0]
+
+          if (!file) {
+
+            resolve()
+
+            return
+          }
+
+          const reader =
+            new FileReader()
+
+          reader.onload =
+            () => {
+
+              surveyData.image =
+                reader.result
+
+              showImagePreview(
+                surveyData.image
+              )
+
+              resolve()
+            }
+
+          reader.onerror =
+            () => {
+
+              reject(
+                reader.error
+              )
+            }
+
+          reader.readAsDataURL(
+            file
+          )
+        }
+
+      input.click()
+    }
+  )
+}
+
+
+// ==========================================
+// IMAGE PREVIEW
+// ==========================================
+
+function showImagePreview(
+  image
+) {
+
+  const preview =
+    document.querySelector(
+      '#imagePreview'
+    )
+
+  const img =
+    document.querySelector(
+      '#previewImage'
+    )
+
+  if (!preview || !img) {
+    return
+  }
+
+  img.src =
+    image
+
+  preview.style.display =
+    'block'
+}
+
+
+// ==========================================
+// TẠO OBJECT GỬI GOOGLE SHEET
+// ==========================================
+
+function prepareSurveyForSync(
+  survey
+) {
+
+  return {
+
+    id:
+      survey.id,
+
+    fullName:
+      survey.fullName,
+
+    studentId:
+      survey.studentId,
+
+    major:
+      survey.major,
+
+    year:
+      survey.year,
+
+    gender:
+      survey.gender,
+
+    interviewed:
+      survey.interviewed,
+
+    interviewCount:
+      survey.interviewCount,
+
+    company:
+      survey.company,
+
+    position:
+      survey.position,
+
+    interviewLocation:
+      survey.interviewLocation,
+
+    interviewType:
+      survey.interviewType,
+
+    result:
+      survey.result,
+
+    lookingForJob:
+      survey.lookingForJob,
+
+    reason:
+      survey.reason,
+
+    jobWish:
+      survey.jobWish,
+
+    location:
+      survey.location ||
+      null,
+
+    image:
+      survey.image ||
+      null,
+
+    status:
+      'PENDING_SYNC'
+
+  }
+}
+
+
+// ==========================================
+// GỬI 1 KHẢO SÁT LÊN GOOGLE SHEET
+// ==========================================
+
+async function syncSurvey(
+  survey
+) {
+
+  console.log(
+    'Đang đồng bộ khảo sát:',
+    survey.id
+  )
+
+
+  const payload =
+    prepareSurveyForSync(
+      survey
+    )
+
+
+  const response =
+    await fetch(
+      API_URL,
+      {
+
+        method: 'POST',
+
+        headers: {
+
+          'Content-Type':
+            'text/plain;charset=utf-8'
+
+        },
+
+        body:
+          JSON.stringify(
+            payload
+          )
+
+      }
+    )
+
+
+  if (!response.ok) {
+
+    throw new Error(
+      `HTTP ${response.status}`
+    )
+  }
+
+
+  const result =
+    await response.json()
+
+
+  console.log(
+    'Apps Script:',
+    result
+  )
+
+
+  if (!result.success) {
+
+    throw new Error(
+      result.message ||
+      'Google Sheet không nhận dữ liệu'
+    )
+  }
+
+
+  survey.status =
+    'SYNCED'
+
+
+  await saveSurvey(
+    survey
+  )
+
+
+  console.log(
+    'Đồng bộ thành công:',
+    survey.id
+  )
+}
+
+
+// ==========================================
+// ĐỒNG BỘ TẤT CẢ KHẢO SÁT ĐANG CHỜ
+// ==========================================
+
+async function syncPendingSurveys() {
+
+  if (!navigator.onLine) {
+
+    console.log(
+      'Đang offline, chưa đồng bộ.'
+    )
+
+    return
+  }
+
+
+  try {
+
+    const allSurveys =
+      await getAllSurveys()
+
+
+    const pendingSurveys =
+      allSurveys.filter(
+        (survey) =>
+          survey.status !==
+          'SYNCED'
+      )
+
+
+    console.log(
+      `Có ${pendingSurveys.length} khảo sát đang chờ đồng bộ.`
+    )
+
+
+    if (
+      pendingSurveys.length ===
+      0
+    ) {
+
+      return
+    }
+
+
+    for (
+      const survey
+      of pendingSurveys
+    ) {
+
+      try {
+
+        await syncSurvey(
+          survey
+        )
+
+      } catch (error) {
+
+        console.error(
+          'Không thể đồng bộ khảo sát:',
+          survey.id,
+          error
+        )
+
+        break
+      }
+    }
+
+  } catch (error) {
+
+    console.error(
+      'Lỗi lấy dữ liệu IndexedDB:',
+      error
+    )
+  }
+}
+
+
+// ==========================================
+// SUBMIT KHẢO SÁT
+// ==========================================
+
+async function submitSurvey(
+  event
+) {
+
+  event.preventDefault()
+
+
+  const form =
+    document.querySelector(
+      '#surveyForm'
+    )
+
+
+  if (!form.checkValidity()) {
+
+    form.reportValidity()
+
+    return
+  }
+
+
+  const submitButton =
+    document.querySelector(
+      '#submitBtn'
+    )
+
+
+  if (submitButton) {
+
+    submitButton.disabled =
+      true
+
+    submitButton.textContent =
+      '⏳ Đang lưu khảo sát...'
+  }
+
+
+  const survey =
+    collectSurveyData()
+
+
+  // ----------------------------------------
+  // LƯU LOCAL TRƯỚC
+  // ----------------------------------------
+
+  try {
+
+    await saveSurvey(
+      survey
+    )
+
+
+    console.log(
+      'Đã lưu khảo sát vào IndexedDB:',
+      survey.id
+    )
+
+  } catch (error) {
+
+    console.error(
+      'Lỗi lưu IndexedDB:',
+      error
+    )
+
+
+    alert(
+      'Không thể lưu khảo sát trên thiết bị.'
+    )
+
+    if (submitButton) {
+
+      submitButton.disabled =
+        false
+
+      submitButton.textContent =
+        '📤 Gửi khảo sát'
+    }
+
+    return
+  }
+
+
+  // ----------------------------------------
+  // OFFLINE
+  // ----------------------------------------
+
+  if (!navigator.onLine) {
+
+    alert(
+      'Đã lưu khảo sát offline. Khi có mạng, dữ liệu sẽ tự động đồng bộ.'
+    )
+
+
+    form.reset()
+
+
+    surveyData = {}
+
+
+    const interviewSection =
+      document.querySelector(
+        '#interviewSection'
+      )
+
+    if (interviewSection) {
+
+      interviewSection.style.display =
+        'none'
+    }
+
+
+    const notInterviewSection =
+      document.querySelector(
+        '#notInterviewSection'
+      )
+
+    if (notInterviewSection) {
+
+      notInterviewSection.style.display =
+        'none'
+    }
+
+
+    const locationStatus =
+      document.querySelector(
+        '#locationStatus'
+      )
+
+    if (locationStatus) {
+
+      locationStatus.textContent =
+        'Chưa lấy vị trí'
+    }
+
+
+    const imagePreview =
+      document.querySelector(
+        '#imagePreview'
+      )
+
+    if (imagePreview) {
+
+      imagePreview.style.display =
+        'none'
+    }
+
+
+    if (submitButton) {
+
+      submitButton.disabled =
+        false
+
+      submitButton.textContent =
+        '📤 Gửi khảo sát'
+    }
+
+    return
+  }
+
+
+  // ----------------------------------------
+  // ONLINE
+  // ----------------------------------------
+
+  try {
+
+    if (submitButton) {
+
+      submitButton.textContent =
+        '⏳ Đang đồng bộ...'
+    }
+
+
+    await syncSurvey(
+      survey
+    )
+
+
+    alert(
+      '✅ Khảo sát đã được gửi thành công!'
+    )
+
+
+    form.reset()
+
+
+    surveyData = {}
+
+
+    const interviewSection =
+      document.querySelector(
+        '#interviewSection'
+      )
+
+    if (interviewSection) {
+
+      interviewSection.style.display =
+        'none'
+    }
+
+
+    const notInterviewSection =
+      document.querySelector(
+        '#notInterviewSection'
+      )
+
+    if (notInterviewSection) {
+
+      notInterviewSection.style.display =
+        'none'
+    }
+
+
+    const locationStatus =
+      document.querySelector(
+        '#locationStatus'
+      )
+
+    if (locationStatus) {
+
+      locationStatus.textContent =
+        'Chưa lấy vị trí'
+    }
+
+
+    const imagePreview =
+      document.querySelector(
+        '#imagePreview'
+      )
+
+    if (imagePreview) {
+
+      imagePreview.style.display =
+        'none'
+    }
+
+
+    showSyncNotification()
+
+  } catch (error) {
+
+    console.error(
+      'Lỗi đồng bộ:',
+      error
+    )
+
+
+    alert(
+      '⚠️ Không thể đồng bộ lúc này.\n\n' +
+      'Dữ liệu đã được lưu trên thiết bị và sẽ tự động đồng bộ khi có mạng.'
+    )
+
+  } finally {
+
+    if (submitButton) {
+
+      submitButton.disabled =
+        false
+
+      submitButton.textContent =
+        '📤 Gửi khảo sát'
+    }
+  }
+}
+
+
+// ==========================================
 // CAPACITOR NETWORK
 // ==========================================
 
@@ -2006,6 +2603,10 @@ async function initNativeNetwork() {
   }
 }
 
+
+// ==========================================
+// UPDATE NETWORK UI
+// ==========================================
 
 function updateNetworkUI(
   connected
@@ -2119,460 +2720,108 @@ async function showSyncNotification() {
 
 
 // ==========================================
-// GỬI 1 KHẢO SÁT LÊN GOOGLE SHEET
-// ==========================================
-
-async function syncSurvey(
-  survey
-) {
-
-  console.log(
-    'Đang đồng bộ khảo sát:',
-    survey.id
-  )
-
-
-  const response =
-    await fetch(
-      API_URL,
-      {
-
-        method: 'POST',
-
-        headers: {
-
-          'Content-Type':
-            'text/plain;charset=utf-8'
-
-        },
-
-        body:
-          JSON.stringify(
-            survey
-          )
-
-      }
-    )
-
-
-  if (!response.ok) {
-
-    throw new Error(
-      `HTTP ${response.status}`
-    )
-  }
-
-
-  const result =
-    await response.json()
-
-
-  console.log(
-    'Apps Script:',
-    result
-  )
-
-
-  if (!result.success) {
-
-    throw new Error(
-      result.message ||
-      'Google Sheet không nhận dữ liệu'
-    )
-  }
-
-
-  survey.status =
-    'SYNCED'
-
-
-  await saveSurvey(
-    survey
-  )
-
-
-  console.log(
-    'Đồng bộ thành công:',
-    survey.id
-  )
-
-
-  await showSyncNotification()
-}
-
-
-// ==========================================
-// ĐỒNG BỘ TẤT CẢ KHẢO SÁT ĐANG CHỜ
-// ==========================================
-
-async function syncPendingSurveys() {
-
-  if (!navigator.onLine) {
-
-    console.log(
-      'Đang offline, chưa đồng bộ.'
-    )
-
-    return
-  }
-
-
-  try {
-
-    const allSurveys =
-      await getAllSurveys()
-
-
-    const pendingSurveys =
-      allSurveys.filter(
-        (survey) =>
-          survey.status !==
-          'SYNCED'
-      )
-
-
-    console.log(
-      `Có ${pendingSurveys.length} khảo sát đang chờ đồng bộ.`
-    )
-
-
-    if (
-      pendingSurveys.length === 0
-    ) {
-
-      return
-    }
-
-
-    for (
-      const survey
-      of pendingSurveys
-    ) {
-
-      try {
-
-        await syncSurvey(
-          survey
-        )
-
-      } catch (error) {
-
-        console.error(
-          'Không thể đồng bộ khảo sát:',
-          survey.id,
-          error
-        )
-
-        break
-      }
-    }
-
-
-  } catch (error) {
-
-    console.error(
-      'Lỗi lấy dữ liệu IndexedDB:',
-      error
-    )
-  }
-}
-
-
-// ==========================================
-// RESET FORM
-// ==========================================
-
-function resetSurveyForm() {
-
-  const form =
-    document.querySelector(
-      '#surveyForm'
-    )
-
-
-  if (form) {
-    form.reset()
-  }
-
-
-  surveyData = {}
-
-
-  const interviewSection =
-    document.querySelector(
-      '#interviewSection'
-    )
-
-  if (interviewSection) {
-
-    interviewSection.style.display =
-      'none'
-  }
-
-
-  const notInterviewSection =
-    document.querySelector(
-      '#notInterviewSection'
-    )
-
-  if (notInterviewSection) {
-
-    notInterviewSection.style.display =
-      'none'
-  }
-
-
-  const locationStatus =
-    document.querySelector(
-      '#locationStatus'
-    )
-
-  if (locationStatus) {
-
-    locationStatus.textContent =
-      'Chưa lấy vị trí'
-  }
-
-
-  const imagePreview =
-    document.querySelector(
-      '#imagePreview'
-    )
-
-  if (imagePreview) {
-
-    imagePreview.innerHTML =
-      ''
-  }
-}
-
-
-// ==========================================
-// SUBMIT KHẢO SÁT
-// ==========================================
-
-async function submitSurvey(
-  event
-) {
-
-  event.preventDefault()
-
-
-  const form =
-    document.querySelector(
-      '#surveyForm'
-    )
-
-
-  if (
-    !form.checkValidity()
-  ) {
-
-    form.reportValidity()
-
-    return
-  }
-
-
-  const survey =
-    collectSurveyData()
-
-
-  // ----------------------------------------
-  // LƯU LOCAL TRƯỚC
-  // ----------------------------------------
-
-  try {
-
-    await saveSurvey(
-      survey
-    )
-
-
-    console.log(
-      'Đã lưu khảo sát vào IndexedDB:',
-      survey.id
-    )
-
-  } catch (error) {
-
-    console.error(
-      'Lỗi lưu IndexedDB:',
-      error
-    )
-
-
-    alert(
-      'Không thể lưu khảo sát trên thiết bị.'
-    )
-
-
-    return
-  }
-
-
-  // ----------------------------------------
-  // OFFLINE
-  // ----------------------------------------
-
-  if (
-    !navigator.onLine
-  ) {
-
-    alert(
-      'Đã lưu khảo sát offline. Khi có mạng, dữ liệu sẽ tự động đồng bộ.'
-    )
-
-
-    resetSurveyForm()
-
-    return
-  }
-
-
-  // ----------------------------------------
-  // ONLINE
-  // ----------------------------------------
-
-  try {
-
-    await syncSurvey(
-      survey
-    )
-
-
-    alert(
-      'Gửi khảo sát thành công!'
-    )
-
-
-    resetSurveyForm()
-
-
-  } catch (error) {
-
-    console.error(
-      'Lỗi đồng bộ:',
-      error
-    )
-
-
-    alert(
-      'Đã lưu khảo sát trên thiết bị nhưng chưa đồng bộ được. Hệ thống sẽ tự động thử lại khi có mạng.'
-    )
-  }
-}
-
-
-// ==========================================
-// KHI CÓ MẠNG TRỞ LẠI
+// ONLINE EVENT
 // ==========================================
 
 window.addEventListener(
   'online',
-  async () => {
+  () => {
 
     console.log(
-      'Đã có kết nối mạng trở lại.'
+      '🌐 Đã có mạng trở lại.'
     )
 
+    updateNetworkUI(
+      true
+    )
 
-    const status =
-      document.querySelector(
-        '.network-status'
+    syncPendingSurveys()
+      .catch(
+        console.error
       )
-
-
-    if (status) {
-
-      status.className =
-        'network-status online'
-
-      status.textContent =
-        '● Online'
-    }
-
-
-    await syncPendingSurveys()
   }
 )
 
-
-// ==========================================
-// KHI MẤT MẠNG
-// ==========================================
 
 window.addEventListener(
   'offline',
   () => {
 
     console.log(
-      'Thiết bị đang offline.'
+      '📴 Thiết bị đang offline.'
     )
 
-
-    const status =
-      document.querySelector(
-        '.network-status'
-      )
-
-
-    if (status) {
-
-      status.className =
-        'network-status offline'
-
-      status.textContent =
-        '● Offline'
-    }
+    updateNetworkUI(
+      false
+    )
   }
 )
-
-
-// ==========================================
-// KHỞI ĐỘNG APP
-// ==========================================
-
-initNativeNetwork()
 
 
 // ==========================================
 // SERVICE WORKER
 // ==========================================
 
-// Không đăng ký Service Worker ở localhost.
-// Điều này giúp Vite cập nhật code ngay khi đang phát triển.
-
 if (
   'serviceWorker' in navigator &&
-  window.location.hostname !== 'localhost'
+  location.hostname !==
+    'localhost' &&
+  location.hostname !==
+    '127.0.0.1'
 ) {
 
   window.addEventListener(
     'load',
-    async () => {
+    () => {
 
-      try {
+      navigator.serviceWorker
+        .register(
+          '/sw.js'
+        )
+        .then(
+          (registration) => {
 
-        const registration =
-          await navigator.serviceWorker.register(
-            '/sw.js'
-          )
+            console.log(
+              'Service Worker registered:',
+              registration.scope
+            )
 
+          }
+        )
+        .catch(
+          (error) => {
 
-        console.log(
-          '[PWA] Service Worker registered:',
-          registration.scope
+            console.error(
+              'Service Worker error:',
+              error
+            )
+
+          }
         )
 
-
-      } catch (error) {
-
-        console.error(
-          '[PWA] Service Worker registration failed:',
-          error
-        )
-      }
     }
   )
 }
+
+
+// ==========================================
+// KHỞI TẠO APP
+// ==========================================
+
+window.addEventListener(
+  'load',
+  () => {
+
+    initNativeNetwork()
+      .catch(
+        console.error
+      )
+
+
+    syncPendingSurveys()
+      .catch(
+        console.error
+      )
+
+  }
+)
