@@ -191,7 +191,7 @@ function getUserHTML() {
 // ==========================================
 
 const API_URL =
-  'https://script.google.com/macros/s/AKfycbyGEe5-EXSm2QilztXZFnI7Xe32i-jwPB5Odok7jaThaHIS0r_5dSItIE_DMgMxdm-/exec'
+  'https://script.google.com/macros/s/AKfycbyGEe5-EXSm2QilztXZFnI7Xe32i-jwPB5dOdok7jaThaHIS0r_5dSItIE_DMgMxdm-/exec'
 
 
 // ==========================================
